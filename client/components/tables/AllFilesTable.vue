@@ -5,7 +5,8 @@
       <span class="bg-black-400 rounded-xl py-1 px-2 text-sm font-mono">{{ allFiles.length }}</span>
       <div class="flex-grow" />
 
-      <ui-btn small :color="showFullPath ? 'gray-600' : 'primary'" @click.stop="showFullPath = !showFullPath">Full Path</ui-btn>
+      <ui-btn small class="mr-2" :color="showFullPath ? 'gray-600' : 'primary'" @click.stop="showFullPath = !showFullPath">Full Path</ui-btn>
+      <ui-btn v-if="isRootUser" small color="primary" :to="`/audiobook/${audiobookId}/files`">Manage Files</ui-btn>
     </div>
     <div class="w-full">
       <table class="text-sm tracksTable">
@@ -51,6 +52,9 @@ export default {
     },
     audiobookPath() {
       return this.audiobook.path
+    },
+    isRootUser() {
+      return this.$store.getters['user/getIsRoot']
     },
     userCanDownload() {
       return this.$store.getters['user/getUserCanDownload']

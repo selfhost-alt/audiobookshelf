@@ -1,5 +1,6 @@
 const Logger = require('../Logger')
 const { reqSupportsWebp } = require('../utils/index')
+const { recurseFileTree } = require('../utils/fileUtils')
 
 class BookController {
   constructor() { }
@@ -258,6 +259,20 @@ class BookController {
       width: width ? parseInt(width) : null
     }
     return this.cacheManager.handleCoverCache(res, audiobook, options)
+  }
+
+  // GET api/books/:id/files
+  //   - Scan audiobook folder and return filesystem tree (Root Only)
+  async getFiles(req, res) {
+    if (!req.user.isRoot) {
+      Logger.error('[BookController] book getFiles unauthorized user ' + req.user.username)
+      return res.sendStatus(403)
+    }
+    var audiobook = this.db.audiobooks.find(a => a.id === req.params.id)
+    if (!audiobook) return res.sendStatus(404)
+
+    var fileTree = await recurseFileTree(audiobook.fullPath)
+    res.json(fileTree)
   }
 }
 module.exports = new BookController()

@@ -2,6 +2,7 @@ const fs = require('fs-extra')
 const rra = require('recursive-readdir-async')
 const axios = require('axios')
 const Logger = require('../Logger')
+const globals = require('./globals')
 
 async function getFileStat(path) {
   try {
@@ -60,6 +61,60 @@ function setFileOwner(path, uid, gid) {
   }
 }
 module.exports.setFileOwner = setFileOwner
+
+function getFileType(ext) {
+  var ext_cleaned = ext.toLowerCase()
+  if (ext_cleaned.startsWith('.')) ext_cleaned = ext_cleaned.slice(1)
+  if (globals.SupportedAudioTypes.includes(ext_cleaned)) return 'audio'
+  if (globals.SupportedImageTypes.includes(ext_cleaned)) return 'image'
+  if (globals.SupportedEbookTypes.includes(ext_cleaned)) return 'ebook'
+  if (ext_cleaned === 'nfo') return 'info'
+  if (ext_cleaned === 'txt') return 'text'
+  if (ext_cleaned === 'opf') return 'opf'
+  return 'unknown'
+}
+
+function cleanNode(node, basePath) {
+  node.id = node.stats.ino
+  node.relativePath = node.fullname.replace(basePath, '')
+
+  if (node.isDirectory) {
+    for (let i = 0; i < node.content.length; i++) {
+      node.content[i] = cleanNode(node.content[i], node.fullname)
+    }
+  } else {
+    node.fileType = getFileType(node.extension)
+  }
+  return node
+}
+
+async function recurseFileTree(path) {
+  path = path.replace(/\\/g, '/')
+  if (!path.endsWith('/')) path = path + '/'
+
+  const options = {
+    mode: rra.TREE,
+    recursive: true,
+    stats: true,
+    ignoreFolders: true,
+    extensions: true,
+    deep: true,
+    realPath: true,
+    normalizePath: true
+  }
+  var list = await rra.list(path, options)
+  if (list.error) {
+    Logger.error(tag, 'Recurse files error', list.error)
+    return []
+  }
+
+  for (let i = 0; i < list.length; i++) {
+    list[i] = cleanNode(list[i], path)
+  }
+
+  return list
+}
+module.exports.recurseFileTree = recurseFileTree
 
 async function recurseFiles(path, relPathToReplace = null) {
   path = path.replace(/\\/g, '/')
