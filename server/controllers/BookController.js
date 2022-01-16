@@ -1,3 +1,4 @@
+const Path = require('path')
 const Logger = require('../Logger')
 const { reqSupportsWebp } = require('../utils/index')
 const { recurseFileTree } = require('../utils/fileUtils')
@@ -271,7 +272,9 @@ class BookController {
     var audiobook = this.db.audiobooks.find(a => a.id === req.params.id)
     if (!audiobook) return res.sendStatus(404)
 
-    var fileTree = await recurseFileTree(audiobook.fullPath)
+    var firstPath = audiobook._path.split('/')[0]
+    var audiobookFirstDirPath = Path.join(audiobook.folderPath, firstPath)
+    var fileTree = await recurseFileTree(audiobookFirstDirPath)
     res.json(fileTree)
   }
 }

@@ -4,12 +4,11 @@
       <h1 class="text-2xl mb-4">
         Manage Files for <span class="font-semibold">{{ audiobook.book.title }}</span>
       </h1>
-
       <p class="text-base mb-4 font-mono"><span class="uppercase text-xs text-gray-300 font-sans">Audiobook Path</span><br />{{ audiobook.fullPath }}</p>
 
-      <template v-for="file in filetree">
-        <widgets-node-tree ref="nodeTree" :node="file" :key="file.id" />
-      </template>
+      <!-- <template v-for="file in filetree"> -->
+      <widgets-node-tree ref="nodeTree" :node="filetree" @ready="ready" />
+      <!-- </template> -->
       <!-- <table class="text-sm tracksTable">
         <tr class="font-book">
           <th class="text-left px-4">Relative Path</th>
@@ -74,7 +73,7 @@ export default {
       return this.audiobook.id
     },
     audiobookPath() {
-      return this.audiobook.path
+      return this.audiobook.path.replace(/\\/g, '/')
     },
     userToken() {
       return this.$store.getters['user/getToken']
@@ -100,15 +99,22 @@ export default {
     }
   },
   methods: {
+    ready() {
+      if (this.$refs.nodeTree) {
+        this.$refs.nodeTree.expandPath(this.audiobookPath)
+      }
+    },
     getRelativePath(path) {
       var filePath = path.replace(/\\/g, '/')
-      var audiobookPath = this.audiobookPath.replace(/\\/g, '/')
+      var audiobookPath = this.audiobookPath
       return filePath
         .replace(audiobookPath + '/', '')
         .replace(/%/g, '%25')
         .replace(/#/g, '%23')
     }
   },
-  mounted() {}
+  mounted() {
+    console.log(this.filetree)
+  }
 }
 </script>

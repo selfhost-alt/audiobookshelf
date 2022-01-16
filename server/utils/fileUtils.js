@@ -1,4 +1,5 @@
 const fs = require('fs-extra')
+const Path = require('path')
 const rra = require('recursive-readdir-async')
 const axios = require('axios')
 const Logger = require('../Logger')
@@ -77,6 +78,8 @@ function getFileType(ext) {
 function cleanNode(node, basePath) {
   node.id = node.stats.ino
   node.relativePath = node.fullname.replace(basePath, '')
+  if (node.relativePath.startsWith('/')) node.relativePath = node.relativePath.substr(1)
+  node.deep++
 
   if (node.isDirectory) {
     for (let i = 0; i < node.content.length; i++) {
@@ -91,6 +94,19 @@ function cleanNode(node, basePath) {
 async function recurseFileTree(path) {
   path = path.replace(/\\/g, '/')
   if (!path.endsWith('/')) path = path + '/'
+
+  var rootStat = await fs.stat(path)
+  var rootObj = {
+    content: [],
+    deep: 0,
+    fullname: path,
+    id: rootStat.ino,
+    isDirectory: true,
+    name: Path.basename(path),
+    path: Path.dirname(path),
+    relativePath: Path.basename(path),
+    stats: rootStat
+  }
 
   const options = {
     mode: rra.TREE,
@@ -111,8 +127,9 @@ async function recurseFileTree(path) {
   for (let i = 0; i < list.length; i++) {
     list[i] = cleanNode(list[i], path)
   }
+  rootObj.content = list
 
-  return list
+  return rootObj
 }
 module.exports.recurseFileTree = recurseFileTree
 

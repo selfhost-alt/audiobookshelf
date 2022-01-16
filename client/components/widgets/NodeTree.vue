@@ -9,7 +9,7 @@
 
     <div v-if="hasContent" :class="isOpen ? '' : 'h-0 overflow-hidden'">
       <div v-if="node.content && node.content.length">
-        <node v-for="child in node.content" :key="child.id" ref="node" :node="child"></node>
+        <node v-for="child in node.content" :key="child.id" ref="node" :node="child" @ready="nodeReady"></node>
       </div>
     </div>
   </div>
@@ -33,7 +33,8 @@ export default {
         info: 'description',
         opf: 'description',
         unknown: 'insert_drive_file'
-      }
+      },
+      numChildrenMounted: 0
     }
   },
   computed: {
@@ -65,6 +66,12 @@ export default {
         this.isOpen = !this.isOpen
       }
     },
+    nodeReady() {
+      this.numChildrenMounted++
+      if (this.numChildrenMounted === this.node.content.length) {
+        this.$emit('ready')
+      }
+    },
     collapse() {
       if (!this.node.isDirectory) return
 
@@ -82,7 +89,20 @@ export default {
       nodes.forEach((node) => {
         if (node && node.expand) node.expand()
       })
+    },
+    expandPath(pathToExpand) {
+      if (!this.node.isDirectory) return
+
+      this.isOpen = true
+      var nodes = this.$refs.node || []
+      nodes.forEach((node) => {
+        if (node && node.expand && node.node && pathToExpand.includes(node.node.relativePath)) node.expandPath(pathToExpand)
+      })
     }
+  },
+  mounted() {
+    if (this.node.deep === 0) this.isOpen = true
+    if (!this.hasContent) this.$emit('ready')
   }
 }
 </script>

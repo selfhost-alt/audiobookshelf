@@ -135,6 +135,8 @@ class Audiobook {
   get _audioFiles() { return this.audioFiles || [] }
   get _otherFiles() { return this.otherFiles || [] }
   get _tracks() { return this.tracks || [] }
+  get _path() { return this.path.replace(/\\/g, '/') }
+  get _fullPath() { return this.fullPath.replace(/\\/g, '/') }
 
   get audioFilesToInclude() { return this._audioFiles.filter(af => !af.exclude) }
 
@@ -148,6 +150,10 @@ class Audiobook {
 
   get hasEmbeddedCoverArt() {
     return !!this._audioFiles.find(af => af.embeddedCoverArt)
+  }
+
+  get folderPath() {
+    return this._fullPath.replace(this._path, '')
   }
 
   // TEMP: Issue with inodes not always being set for files
