@@ -13,6 +13,10 @@ class Series {
     }
   }
 
+  static fromDb(snap) {
+    return new Series(snap.val())
+  }
+
   construct(series) {
     this.id = series.id
     this.name = series.name

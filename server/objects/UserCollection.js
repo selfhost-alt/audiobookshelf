@@ -22,6 +22,10 @@ class UserCollection {
     }
   }
 
+  static fromDb(snap) {
+    return new UserCollection(snap.val())
+  }
+
   toJSON() {
     return {
       id: this.id,

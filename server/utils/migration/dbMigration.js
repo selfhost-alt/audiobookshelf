@@ -1,55 +1,40 @@
 const Path = require('path')
 const fs = require('fs-extra')
 const njodb = require("njodb")
+const loadOldData = require('./loadOldData')
 
-const { SupportedEbookTypes } = require('./globals')
-const { PlayMethod } = require('./constants')
-const { getId } = require('./index')
-const Logger = require('../Logger')
+const { SupportedEbookTypes } = require('../globals')
+const { PlayMethod } = require('../constants')
+const { getId } = require('../index')
+const Logger = require('../../Logger')
 
-const LegacyAudiobook = require('../objects/legacy/Audiobook')
-const UserAudiobookData = require('../objects/legacy/UserAudiobookData')
+const Library = require('../../objects/Library')
+const LibraryItem = require('../../objects/LibraryItem')
+const Book = require('../../objects/mediaTypes/Book')
 
-const Library = require('../objects/Library')
-const LibraryItem = require('../objects/LibraryItem')
-const Book = require('../objects/mediaTypes/Book')
+const BookMetadata = require('../../objects/metadata/BookMetadata')
+const FileMetadata = require('../../objects/metadata/FileMetadata')
 
-const BookMetadata = require('../objects/metadata/BookMetadata')
-const FileMetadata = require('../objects/metadata/FileMetadata')
+const AudioFile = require('../../objects/files/AudioFile')
+const EBookFile = require('../../objects/files/EBookFile')
+const LibraryFile = require('../../objects/files/LibraryFile')
+const AudioMetaTags = require('../../objects/metadata/AudioMetaTags')
 
-const AudioFile = require('../objects/files/AudioFile')
-const EBookFile = require('../objects/files/EBookFile')
-const LibraryFile = require('../objects/files/LibraryFile')
-const AudioMetaTags = require('../objects/metadata/AudioMetaTags')
+const Author = require('../../objects/entities/Author')
+const Series = require('../../objects/entities/Series')
 
-const Author = require('../objects/entities/Author')
-const Series = require('../objects/entities/Series')
+const MediaProgress = require('../../objects/user/MediaProgress')
+const PlaybackSession = require('../../objects/PlaybackSession')
 
-const MediaProgress = require('../objects/user/MediaProgress')
-const PlaybackSession = require('../objects/PlaybackSession')
-
-const { isObject } = require('.')
-const User = require('../objects/user/User')
+const { isObject } = require('..')
+const User = require('../../objects/user/User')
+const UserCollection = require('../../objects/UserCollection')
+const ServerSettings = require('../../objects/ServerSettings')
 
 var authorsToAdd = []
 var existingDbAuthors = []
 var seriesToAdd = []
 var existingDbSeries = []
-
-// Load old audiobooks
-async function loadAudiobooks() {
-  var audiobookPath = Path.join(global.ConfigPath, 'audiobooks')
-
-  var pathExists = await fs.pathExists(audiobookPath)
-  if (!pathExists) {
-    return []
-  }
-
-  var audiobooksDb = new njodb.Database(audiobookPath)
-  return audiobooksDb.select(() => true).then((results) => {
-    return results.data.map(a => new LegacyAudiobook(a))
-  })
-}
 
 function makeAuthorsFromOldAb(authorsList) {
   return authorsList.filter(a => !!a).map(authorName => {
@@ -96,7 +81,7 @@ function makeFilesFromOldAb(audiobook) {
   var libraryFiles = []
   var ebookFiles = []
 
-  var audioFiles = audiobook._audioFiles.map((af) => {
+  var audioFiles = (audiobook.audioFiles || []).map((af) => {
     var fileMetadata = new FileMetadata(af)
     fileMetadata.path = af.fullPath
     fileMetadata.relPath = getRelativePath(af.fullPath, audiobook.fullPath)
@@ -118,7 +103,8 @@ function makeFilesFromOldAb(audiobook) {
     return newAudioFile
   })
 
-  audiobook._otherFiles.forEach((file) => {
+  var otherFiles = (audiobook.otherFiles || [])
+  otherFiles.forEach((file) => {
     var fileMetadata = new FileMetadata(file)
     fileMetadata.path = file.fullPath
     fileMetadata.relPath = getRelativePath(file.fullPath, audiobook.fullPath)
@@ -182,10 +168,12 @@ function makeLibraryItemFromOldAb(audiobook) {
   var bookMetadata = new BookMetadata(audiobook.book)
   bookMetadata.publishedYear = audiobook.book.publishYear || null
   if (audiobook.book.narrator) {
-    bookMetadata.narrators = audiobook.book._narratorsList
+    bookMetadata.narrators = audiobook.book.narrator.split(', ')
   }
   // Returns array of json minimal authors
-  bookMetadata.authors = makeAuthorsFromOldAb(audiobook.book._authorsList)
+  if (audiobook.book.authorFL) {
+    bookMetadata.authors = makeAuthorsFromOldAb(audiobook.book.authorFL.split(', '))
+  }
 
   // Returns array of json minimal series
   if (audiobook.book.series) {
@@ -213,49 +201,7 @@ function makeLibraryItemFromOldAb(audiobook) {
   return libraryItem
 }
 
-async function migrateLibraryItems(db) {
-  Logger.info(`==== Starting Library Item migration ====`)
-
-  var audiobooks = await loadAudiobooks()
-  if (!audiobooks.length) {
-    Logger.info(`>>> No audiobooks in db, no migration necessary`)
-    return
-  }
-
-  Logger.info(`>>> Loaded old audiobook data with ${audiobooks.length} records`)
-
-  if (db.libraryItems.length) {
-    Logger.info(`>>> Some library items already loaded ${db.libraryItems.length} items | ${db.series.length} series | ${db.authors.length} authors`)
-    return
-  }
-
-  if (db.authors && db.authors.length) {
-    existingDbAuthors = db.authors
-  }
-  if (db.series && db.series.length) {
-    existingDbSeries = db.series
-  }
-
-  var libraryItems = audiobooks.map((ab) => makeLibraryItemFromOldAb(ab))
-
-  Logger.info(`>>> ${libraryItems.length} Library Items made`)
-  await db.insertEntities('libraryItem', libraryItems)
-  if (authorsToAdd.length) {
-    Logger.info(`>>> ${authorsToAdd.length} Authors made`)
-    await db.insertEntities('author', authorsToAdd)
-  }
-  if (seriesToAdd.length) {
-    Logger.info(`>>> ${seriesToAdd.length} Series made`)
-    await db.insertEntities('series', seriesToAdd)
-  }
-  existingDbSeries = []
-  existingDbAuthors = []
-  authorsToAdd = []
-  seriesToAdd = []
-  Logger.info(`==== Library Item migration complete ====`)
-}
-
-function cleanUserObject(db, userObj) {
+function cleanUserObject(userObj) {
   var cleanedUserPayload = {
     ...userObj,
     mediaProgress: [],
@@ -275,7 +221,7 @@ function cleanUserObject(db, userObj) {
           cleanedUserPayload.bookmarks = cleanedUserPayload.bookmarks.concat(cleanedBookmarks)
         }
 
-        var userAudiobookData = new UserAudiobookData(userObj.audiobooks[audiobookId]) // Legacy object
+        var userAudiobookData = userObj.audiobooks[audiobookId] // Legacy object
         var liProgress = new MediaProgress() // New Progress Object
         liProgress.id = userAudiobookData.audiobookId
         liProgress.libraryItemId = userAudiobookData.audiobookId
@@ -291,17 +237,10 @@ function cleanUserObject(db, userObj) {
     }
   }
 
-  const user = new User(cleanedUserPayload)
-  return db.usersDb.update((record) => record.id === user.id, () => user).then((results) => {
-    Logger.debug(`[dbMigration] Updated User: ${results.updated} | Selected: ${results.selected}`)
-    return true
-  }).catch((error) => {
-    Logger.error(`[dbMigration] Update User Failed: ${error}`)
-    return false
-  })
+  return new User(cleanedUserPayload)
 }
 
-function cleanSessionObj(db, userListeningSession) {
+function cleanSessionObj(userListeningSession) {
   var newPlaybackSession = new PlaybackSession(userListeningSession)
   newPlaybackSession.id = getId('play')
   newPlaybackSession.mediaType = 'book'
@@ -314,74 +253,7 @@ function cleanSessionObj(db, userListeningSession) {
   bookMetadata.title = userListeningSession.audiobookTitle || ''
   newPlaybackSession.mediaMetadata = bookMetadata
 
-  return db.sessionsDb.update((record) => record.id === userListeningSession.id, () => newPlaybackSession).then((results) => true).catch((error) => {
-    Logger.error(`[dbMigration] Update Session Failed: ${error}`)
-    return false
-  })
-}
-
-async function migrateUserData(db) {
-  Logger.info(`==== Starting User migration ====`)
-
-  // Libraries with previous mediaType of "podcast" moved to "book"
-  //   because migrating those items to podcast objects will be a nightmare
-  //   users will need to create a new library for podcasts
-  var availableIcons = ['database', 'audiobook', 'book', 'comic', 'podcast']
-  const libraries = await db.librariesDb.select((result) => (result.mediaType != 'book' || !availableIcons.includes(result.icon)))
-    .then((results) => results.data.map(lib => new Library(lib)))
-  if (!libraries.length) {
-    Logger.info('[dbMigration] No libraries found needing migration')
-  } else {
-    for (const library of libraries) {
-      Logger.info(`>> Migrating library "${library.name}" with media type "${library.mediaType}"`)
-      await db.librariesDb.update((record) => record.id === library.id, () => library).then(() => true).catch((error) => {
-        Logger.error(`[dbMigration] Update library failed: ${error}`)
-        return false
-      })
-    }
-  }
-
-
-  const userObjects = await db.usersDb.select((result) => result.audiobooks != undefined).then((results) => results.data)
-  if (!userObjects.length) {
-    Logger.warn('[dbMigration] No users found needing migration')
-    return
-  }
-
-  var userCount = 0
-  for (const userObj of userObjects) {
-    Logger.info(`[dbMigration] Migrating User "${userObj.username}"`)
-    var success = await cleanUserObject(db, userObj)
-    if (!success) {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      Logger.warn(`[dbMigration] Second attempt Migrating User "${userObj.username}"`)
-      success = await cleanUserObject(db, userObj)
-      if (!success) {
-        throw new Error('Db migration failed migrating users')
-      }
-    }
-    userCount++
-  }
-
-  var sessionCount = 0
-  const userListeningSessions = await db.sessionsDb.select((result) => result.audiobookId != undefined).then((results) => results.data)
-  if (userListeningSessions.length) {
-
-    for (const session of userListeningSessions) {
-      var success = await cleanSessionObj(db, session)
-      if (!success) {
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        Logger.warn(`[dbMigration] Second attempt Migrating Session "${session.id}"`)
-        success = await cleanSessionObj(db, session)
-        if (!success) {
-          Logger.error(`[dbMigration] Failed to migrate session "${session.id}"`)
-        }
-      }
-      if (success) sessionCount++
-    }
-  }
-
-  Logger.info(`==== User migration complete (${userCount} Users, ${sessionCount} Sessions) ====`)
+  return newPlaybackSession
 }
 
 async function checkUpdateMetadataPath() {
@@ -395,12 +267,111 @@ async function checkUpdateMetadataPath() {
   Logger.info(`>>> Renamed metadata dir from /metadata/books to /metadata/items`)
 }
 
-module.exports.migrate = async (db) => {
+module.exports.migrate = async (aceDb) => {
+  console.log('\n\n---- Testing new Db ----\n\n')
+  await aceDb.init()
+
+  if (!fs.pathExistsSync(Path.join(global.ConfigPath, 'audiobooks'))) {
+    Logger.debug('>> No need to migrate anything')
+    return false
+  }
+
+  Logger.info(`\n==== Starting Migration ====\n`)
+
+  var oldData = await loadOldData.load()
+
   await checkUpdateMetadataPath()
-  // Before DB Load clean data
-  await migrateUserData(db)
-  await db.init()
-  // After DB Load
-  await migrateLibraryItems(db)
-  // TODO: Eventually remove audiobooks db when stable
+
+  // Insert libraries to new db
+  if (oldData.libraries.length) {
+    var libraries = oldData.libraries.map((lib) => new Library(lib))
+    await aceDb.upsertEntities('libraries', libraries)
+  }
+
+  // Insert Users to new db
+  if (oldData.users.length) {
+    var users = oldData.users.map((user) => cleanUserObject(user))
+    await aceDb.upsertEntities('users', users)
+  }
+
+  // Insert Sessions to new db
+  if (oldData.sessions.length) {
+    var sessions = oldData.sessions.map((session) => cleanSessionObj(session))
+    await aceDb.upsertEntities('sessions', sessions)
+  }
+
+  // Insert Collections to new db
+  if (oldData.collections.length) {
+    var collections = oldData.collections.map((collection) => new UserCollection(collection))
+    await aceDb.upsertEntities('collections', collections)
+  }
+
+  // Insert Server Settings in settings to new db
+  if (oldData.settings.length) {
+    var serverSettings = oldData.settings.find(s => s.id == 'server-settings')
+    if (serverSettings) {
+      serverSettings = new ServerSettings(serverSettings)
+      await aceDb.upsertEntity('settings', serverSettings)
+    }
+  }
+
+  // Insert Library Items
+  if (oldData.audiobooks.length) {
+    var libraryItems = oldData.audiobooks.map((ab) => makeLibraryItemFromOldAb(ab))
+    Logger.info(`>> ${libraryItems.length} Library Items made`)
+
+
+    var libitemmap = {}
+
+    libraryItems.forEach((lib) => libitemmap[lib.id] = lib)
+
+    // Attempt at bulk insert
+    // var tempfilepath = Path.join(global.ConfigPath, 'libitems.json')
+    // var str = JSON.stringify(libitemmap).replace(/(:null)/g, ':"null"').replace(/(:true)/g, ':"true"').replace(/(:false)/g, ':"false"')
+    // await fs.writeFile(tempfilepath, str)
+
+    // const fd = fs.openSync(tempfilepath, 'r');
+    // const read = length => {
+    //   return new Promise((resolve, reject) => {
+    //     const buffer = new Uint8Array(length);
+    //     fs.read(fd, buffer, 0, length, null, err => {
+    //       if (err) { reject(err); }
+    //       else { resolve(buffer); }
+    //     })
+    //   })
+    // }
+    // await aceDb.db.ref('libraryItems').import(read);
+    // fs.closeSync(fd);
+
+    // await aceDb.upsertEntities('libraryItems', libraryItems)
+    var total = libraryItems.length
+    var lastPrint = 0
+    var start = Date.now()
+    for (let i = 0; i < libraryItems.length; i++) {
+      await aceDb.upsertEntity('libraryItems', libraryItems[i], true)
+      var perc = Math.round(100 * i / total)
+      if (perc > 0 && perc % 10 == 0 && lastPrint != perc) {
+        lastPrint = perc
+        var elapsed = Math.floor((Date.now() - start) / 1000)
+        Logger.info(`>> ${perc}% done inserting library items: ${elapsed} elapsed`)
+      }
+
+      // console.log('>> inserted library item ' + i)
+    }
+    var elapsed = Math.floor((Date.now() - start) / 1000)
+    Logger.info(`>> Done inserting ${libraryItems.length} library items: ${elapsed} elapsed`)
+
+    if (authorsToAdd.length) {
+      Logger.info(`>>> ${authorsToAdd.length} Authors made`)
+      await aceDb.upsertEntities('authors', authorsToAdd)
+    }
+    if (seriesToAdd.length) {
+      Logger.info(`>>> ${seriesToAdd.length} Series made`)
+      await aceDb.upsertEntities('series', seriesToAdd)
+    }
+  }
+
+  await loadOldData.moveOld()
+
+  Logger.info(`\n==== Migration Complete ====\n`)
 }

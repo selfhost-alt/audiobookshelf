@@ -1,3 +1,5 @@
+const { DataSnapshot } = require('acebase')
+
 const { version } = require('../../package.json')
 const Logger = require('../Logger')
 const LibraryFile = require('./files/LibraryFile')
@@ -64,6 +66,10 @@ class LibraryItem {
     }
 
     this.libraryFiles = libraryItem.libraryFiles.map(f => new LibraryFile(f))
+  }
+
+  static fromDb(snap) {
+    return new LibraryItem(snap.val())
   }
 
   toJSON() {

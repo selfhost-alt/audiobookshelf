@@ -16,6 +16,10 @@ class Author {
     }
   }
 
+  static fromDb(snap) {
+    return new Author(snap.val())
+  }
+
   construct(author) {
     this.id = author.id
     this.asin = author.asin

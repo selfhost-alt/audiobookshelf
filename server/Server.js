@@ -9,7 +9,7 @@ const rateLimit = require('express-rate-limit')
 const { version } = require('../package.json')
 
 // Utils
-const dbMigration = require('./utils/dbMigration')
+const dbMigration = require('./utils/migration/dbMigration')
 const Logger = require('./Logger')
 
 // Classes
@@ -17,6 +17,7 @@ const Auth = require('./Auth')
 const Watcher = require('./Watcher')
 const Scanner = require('./scanner/Scanner')
 const Db = require('./Db')
+const AceDb = require('./AceDb')
 
 const ApiRouter = require('./routers/ApiRouter')
 const HlsRouter = require('./routers/HlsRouter')
@@ -51,6 +52,7 @@ class Server {
     fs.ensureDirSync(global.AudiobookPath, 0o774)
 
     this.db = new Db()
+    this.aceDb = new AceDb()
     this.watcher = new Watcher()
     this.auth = new Auth(this.db)
 
@@ -118,9 +120,9 @@ class Server {
     await this.downloadManager.removeOrphanDownloads()
 
     if (version.localeCompare('1.7.3') < 0) { // Old version data model migration
-      await dbMigration.migrate(this.db)
+      await dbMigration.migrate(this.aceDb)
     } else {
-      await this.db.init()
+      // await this.db.init()
     }
 
     this.auth.init()

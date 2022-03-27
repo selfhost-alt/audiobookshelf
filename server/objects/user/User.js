@@ -27,6 +27,10 @@ class User {
     }
   }
 
+  static fromDb(snap) {
+    return new User(snap.val())
+  }
+
   get isRoot() {
     return this.type === 'root'
   }

@@ -80,12 +80,12 @@ class AudioFile {
     this.exclude = !!data.exclude
     this.error = data.error || null
 
-    this.trackNumFromMeta = data.trackNumFromMeta
-    this.discNumFromMeta = data.discNumFromMeta
-    this.trackNumFromFilename = data.trackNumFromFilename
+    this.trackNumFromMeta = data.trackNumFromMeta || null
+    this.discNumFromMeta = data.discNumFromMeta || null
+    this.trackNumFromFilename = data.trackNumFromFilename || null
 
     if (data.cdNumFromFilename !== undefined) this.discNumFromFilename = data.cdNumFromFilename // TEMP:Support old var name
-    else this.discNumFromFilename = data.discNumFromFilename
+    else this.discNumFromFilename = data.discNumFromFilename || null
 
     this.format = data.format
     this.duration = data.duration

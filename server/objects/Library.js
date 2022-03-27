@@ -22,6 +22,10 @@ class Library {
     }
   }
 
+  static fromDb(snap) {
+    return new Library(snap.val())
+  }
+
   get folderPaths() {
     return this.folders.map(f => f.fullPath)
   }
