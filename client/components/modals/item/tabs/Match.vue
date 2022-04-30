@@ -336,11 +336,10 @@ export default {
             }
             updatePayload.series = [seriesItem]
           } else if (key === 'author' && !this.isPodcast) {
-            var authorItem = {
+            updatePayload.authors = this.selectedMatch[key].split(', ').map(author => ({
               id: `new-${Math.floor(Math.random() * 10000)}`,
-              name: this.selectedMatch[key]
-            }
-            updatePayload.authors = [authorItem]
+              name: author
+            }))
           } else if (key === 'narrator') {
             updatePayload.narrators = [this.selectedMatch[key]]
           } else if (key === 'itunesId') {
